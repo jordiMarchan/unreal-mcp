@@ -7,6 +7,7 @@ Un sistema basado en CrewAI para interactuar con Unreal Engine a través del MCP
 import os
 import sys
 import json
+import ast
 import logging
 from typing import Dict, List, Any
 from crewai import Agent, Task, Crew, Process
@@ -17,8 +18,8 @@ from crewai.tools import tool
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler('unreal_crew.log'), logging.StreamHandler()]
-)
+    handlers=[logging.FileHandler('unreal_crew.log'), logging.StreamHandler()
+])
 logger = logging.getLogger("UnrealCrew")
 
 # Aseguramos que unreal_mcp_server esté en el path
@@ -34,25 +35,40 @@ ollama_llm = OllamaLLM(
     model="ollama/cogito:3b", 
     temperature=0.2,
     num_predict=4096,
+    timeout=6000,  # Aumentado de 600 a 6000 segundos
     system="Enable deep thinking subroutine."  # Activación del modo de pensamiento profundo
 )
 
 # --- 2. Herramientas personalizadas para MCP ---
 
 @tool
-def execute_mcp_command(command: str, params_json = "") -> str:
+def execute_mcp_command(command: str, params_json = None) -> str:
     """Ejecuta un comando específico en el servidor MCP de Unreal Engine.
     El input debe ser el nombre del comando y opcionalmente parámetros como string JSON o diccionario.
     
     Args:
         command: El nombre del comando MCP a ejecutar
-        params_json: Los parámetros del comando. Puede ser un string JSON o un diccionario (default: "")
+        params_json: Los parámetros del comando. Puede ser un string JSON o un diccionario (default: None)
     
     Returns:
         str: La respuesta del servidor como string JSON
     
+    COMANDOS PRINCIPALES Y SUS PARÁMETROS OBLIGATORIOS:
+    
+    1. create_blueprint:
+       - REQUIERE: 'name' (string con el nombre del blueprint)
+       - REQUIERE: 'parent_class' (string con la clase base, ej: 'Actor')
+    
+    2. spawn_actor:
+       - REQUIERE: 'name' (string con nombre único)
+       - REQUIERE: 'type' (string con tipo: 'CUBE', 'SPHERE', etc.)
+       - OPCIONAL: 'location' ([x,y,z]), 'rotation' ([pitch,yaw,roll]), 'scale'
+    
+    3. add_component_to_blueprint:
+       - REQUIERE: 'blueprint_name', 'component_type', 'component_name'
+    
     Ejemplos:
-      execute_mcp_command("get_actors_in_level")
+      execute_mcp_command("get_actors_in_level")      
       execute_mcp_command("spawn_actor", '{"name": "MyCube", "type": "CUBE", "location": [0, 0, 100]}')
       execute_mcp_command("spawn_actor", {"name": "MyCube", "type": "CUBE", "location": [0, 0, 100]}')
       execute_mcp_command("find_actors_by_name", '{"pattern": "Player*"}')
@@ -60,7 +76,10 @@ def execute_mcp_command(command: str, params_json = "") -> str:
       execute_mcp_command("set_actor_transform", '{"name": "Floor", "location": [0, 0, 0], "rotation": [0, 90, 0]}')
       execute_mcp_command("create_blueprint", '{"name": "BP_Character", "parent_class": "Character"}')
     """
-    # Parseamos los parámetros si existen
+    logger.info(f"--- TOOL CALL: execute_mcp_command ---")
+    logger.info(f"Input command: {command}")
+    logger.info(f"Input params_json (type: {type(params_json)}): {str(params_json)[:500]}...") # Log limited params
+      # Parseamos los parámetros si existen
     params = {}
     if params_json:
         try:
@@ -81,6 +100,26 @@ def execute_mcp_command(command: str, params_json = "") -> str:
             return json.dumps({"status": "error", "error": error_msg})
     else:
         params = {}
+        
+    # Validación de parámetros obligatorios para comandos críticos
+    required_params = {}
+    if command == "create_blueprint":
+        required_params = {"name": "nombre del blueprint", "parent_class": "clase base (ej: Actor, Pawn, Character)"}
+    elif command == "spawn_actor":
+        required_params = {"name": "nombre único del actor", "type": "tipo de actor (ej: CUBE, SPHERE)"}
+    elif command == "add_component_to_blueprint":
+        required_params = {
+            "blueprint_name": "nombre del blueprint",
+            "component_type": "tipo de componente",
+            "component_name": "nombre del componente"
+        }
+    
+    # Verificar parámetros obligatorios
+    for param_name, description in required_params.items():
+        if param_name not in params or not params[param_name]:
+            error_msg = f"Parámetro obligatorio '{param_name}' ({description}) no proporcionado para el comando '{command}'"
+            logger.error(error_msg)
+            return json.dumps({"status": "error", "error": error_msg})
 
     unreal = get_unreal_connection()
     if not unreal:
@@ -99,109 +138,303 @@ def execute_mcp_command(command: str, params_json = "") -> str:
         result = json.dumps(response)
         print(f"\n[MCP COMANDO] {command}")
         print(f"[MCP RESPUESTA] {json.dumps(response, indent=2, ensure_ascii=False)}\n")
-        return result
     except Exception as e:
         import traceback
         tb_str = traceback.format_exc()
         error_msg = f"Error ejecutando comando MCP '{command}': {str(e)}"
         logger.error(f"{error_msg}\nTraceback:\n{tb_str}")
-        return json.dumps({"status": "error", "command": command, "error": error_msg, "details": tb_str})
+        result = json.dumps({"status": "error", "command": command, "error": error_msg, "details": tb_str})
+    
+    logger.info(f"--- TOOL RETURN: execute_mcp_command ---")
+    logger.info(f"Returning: {result[:500]}...") # Log limited result
+    return result
 
 @tool
-def execute_mcp_command_batch(commands_list: list = None) -> str: # MCP Guideline: Use list = None
-    """Ejecuta múltiples comandos MCP en secuencia.
-    El input debe ser una lista de diccionarios de comandos donde cada diccionario
-    tiene claves 'command' y 'params'.
+def execute_mcp_command_batch(input_data=None) -> str:
+    """Ejecuta múltiples comandos MCP en secuencia de forma robusta.
+    Intenta interpretar la entrada como una lista de comandos, ya sea directamente,
+    como un string JSON, o extraída de un diccionario.
 
     Args:
-        commands_list: Una lista de diccionarios de comandos a ejecutar.
-            Ejemplo válido:
-            [
-                dict(command="get_actors_in_level", params=dict()),
-                dict(command="spawn_actor", params=dict(name="MiCubo", type="CUBE", location=[0, 0, 100]))
-            ]
+        input_data: La entrada que contiene los comandos. Puede ser:
+            - Una lista de diccionarios: [dict(command="...", params=dict(...)), ...]
+            - Un string JSON representando la lista anterior: '[dict(command="...", params=dict(...)), ...]'
+            - Un diccionario que contenga la lista bajo claves como 'commands_list' o 'commands':
+              dict(commands_list=[dict(command="...", params=dict(...))])
 
     Returns:
-        str: Un string JSON con los resultados de todos los comandos ejecutados
-
-    Nota:
-        Si solo hay un comando en la lista, es más eficiente usar 'execute_mcp_command' directamente.
+        str: Un string JSON con los resultados de todos los comandos ejecutados.
 
     Ejemplo de uso:
+        # Pasando una lista directamente
         execute_mcp_command_batch([
             dict(command="get_actors_in_level", params=dict()),
             dict(command="spawn_actor", params=dict(name="MiCubo", type="CUBE", location=[0, 0, 100]))
         ])
-    """
-    # MCP Guideline: Handle default value inside the method
-    if commands_list is None:
-        error_msg = "El parámetro 'commands_list' no puede ser None. Se requiere una lista de comandos."
-        logger.error(error_msg)
-        return json.dumps({"status": "error", "error": error_msg})
 
-    logger.info(f"execute_mcp_command_batch recibió input inicial: tipo={type(commands_list)}, valor={str(commands_list)[:500]}...") # Log limited value
+        # Pasando un string JSON
+        execute_mcp_command_batch('[dict(command="get_actors_in_level", params=dict())]')
+
+        # Pasando un diccionario (CrewAI podría hacer esto)
+        execute_mcp_command_batch(dict(commands_list=[dict(command="get_actors_in_level", params=dict())]))
+    """
+    logger.info(f"--- TOOL CALL: execute_mcp_command_batch ---")
+    logger.info(f"Input input_data (type: {type(input_data)}): {str(input_data)[:500]}...") # Log limited input
+
+    # MCP Guideline: Handle default value inside the method
+    if input_data is None:
+        # Añadir mejor manejo de errores para debug
+        import traceback
+        logger.warning("Input 'input_data' es None. Mostrando stack trace para debug:")
+        logger.warning(traceback.format_stack())
+        # Si estamos en una ejecución real (con contexto), intentar recuperar comandos desde la tarea anterior
+        try:
+            import inspect
+            frame = inspect.currentframe()
+            while frame:
+                if 'context' in frame.f_locals and isinstance(frame.f_locals['context'], list):
+                    for item in frame.f_locals['context']:
+                        if hasattr(item, 'output') and item.output:
+                            logger.info(f"Recuperando output de contexto anterior: {str(item.output)[:500]}")
+                            input_data = item.output
+                            break
+                frame = frame.f_back
+        except Exception as e:
+            logger.error(f"Error intentando recuperar contexto: {e}")
+            
+        if input_data is None:
+            logger.warning("No se pudo recuperar input. Devolviendo lista de resultados vacía.")
+            return json.dumps([]) # Return empty results list for None input
 
     processed_commands = None # Variable to hold the final list
 
     # --- Robust Input Parsing ---
-    if isinstance(commands_list, str):
+    if isinstance(input_data, list):
+        logger.info("Input ya es una lista.")
+        processed_commands = input_data    
+    elif isinstance(input_data, str):
         logger.info("Input es un string. Intentando parsear como JSON.")
         try:
-            parsed_input = json.loads(commands_list)
-            if isinstance(parsed_input, list):
-                logger.info("Parseado exitosamente como lista JSON.")
-                processed_commands = parsed_input
-            elif isinstance(parsed_input, dict):
-                 logger.info("Parseado como diccionario JSON. Intentando extraer lista interna.")
-                 # Check common CrewAI patterns or direct list key
-                 if "commands_list" in parsed_input and isinstance(parsed_input["commands_list"], list):
-                     processed_commands = parsed_input["commands_list"]
-                     logger.info("Extraída lista desde la clave 'commands_list'.")
-                 elif "commands" in parsed_input and isinstance(parsed_input["commands"], list):
-                     processed_commands = parsed_input["commands"]
-                     logger.info("Extraída lista desde la clave 'commands'.")
-                 # Add more potential keys if needed
-                 else:
-                     logger.warning("Diccionario JSON no contiene una lista de comandos reconocible.")
-                     # Fall through to final type check
-            else:
-                logger.warning(f"JSON parseado no es una lista ni un diccionario: tipo={type(parsed_input)}")
-                # Fall through to final type check
+            # Registrar entrada exacta para debug
+            logger.info(f"String crudo recibido: '{input_data}'")
+            # Mostrar en consola para debug
+            print(f"Repaired JSON: {input_data}")
+
+            # Intenta decodificar el string JSON a una lista Python
+            parsed_data = json.loads(input_data)
+            
+            # --- MANEJO ROBUSTO PARA ESTRUCTURAS ANIDADAS ---
+            # Case 1: Input es directamente una lista de comandos
+            if isinstance(parsed_data, list):
+                processed_commands = parsed_data
+                logger.info("String JSON parseado exitosamente a lista.")
+            
+            # Case 2: El formato es [{"commands_list": [...]}] (lo que vemos en los logs)
+            elif isinstance(parsed_data, list) and len(parsed_data) > 0 and isinstance(parsed_data[0], dict):
+                # Comprobar si hay una clave 'commands_list' o similar que contenga la lista real
+                for key in ["commands_list", "commands", "command_list", "input", "data"]:
+                    if key in parsed_data[0] and isinstance(parsed_data[0][key], list):
+                        processed_commands = parsed_data[0][key]
+                        logger.info(f"Extraída lista de comandos anidada desde parsed_data[0]['{key}']")
+                        break
+                
+                # Si no encontramos una lista anidada pero cada elemento tiene 'command' y 'params'
+                if processed_commands is None:
+                    command_candidates = []
+                    for item in parsed_data:
+                        if isinstance(item, dict) and "command" in item:
+                            command_candidates.append(item)
+                    
+                    if command_candidates:
+                        processed_commands = command_candidates
+                        logger.info(f"Extraídos {len(command_candidates)} comandos directamente del array de objetos")
+            
+            # Case 3: Input es un objeto único con una clave que contiene la lista
+            elif isinstance(parsed_data, dict):
+                for key in ["commands_list", "commands", "command_list", "input", "data"]:
+                    if key in parsed_data and isinstance(parsed_data[key], list):
+                        processed_commands = parsed_data[key]
+                        logger.info(f"Extraída lista de comandos desde raíz['{key}']")
+                        break
+                
+                # Si es un comando único, lo envolvemos en lista
+                if processed_commands is None and "command" in parsed_data:
+                    processed_commands = [parsed_data]
+                    logger.info("Input es un único comando como objeto. Envuelto en lista.")
+            
+            # Si después de todo esto no tenemos comandos, reporte el error
+            if processed_commands is None:
+                error_msg = f"No se pudo extraer una lista de comandos válida del JSON: {parsed_data}"
+                logger.error(error_msg)
+                # Return error consistent with CrewAI's expectation if parsing fails structurally
+                return json.dumps({"status": "error", "message": "Invalid input format. Expected a list of command dictionaries, but received an unrecognized structure."})
+                
         except json.JSONDecodeError as e:
-            error_msg = f"Error al parsear el input string como JSON: {e}. Input: {commands_list}"
+            error_msg = f"Error al parsear el input string como JSON: {e}. Input: {input_data}"
             logger.error(error_msg)
-            return json.dumps({"status": "error", "error": error_msg, "details": "Input string could not be parsed as JSON."})
-        except Exception as e: # Catch other potential errors during parsing/handling
-            error_msg = f"Error inesperado procesando input string: {e}. Input: {commands_list}"
-            logger.error(error_msg)
-            return json.dumps({"status": "error", "error": error_msg, "details": "Unexpected error during string input processing."})
+            logger.error(f"Posición del error: {e.pos}, línea: {e.lineno}, columna: {e.colno}")
+            logger.error(f"Contexto del error: {input_data[max(0, e.pos-20):e.pos]}|ERROR|{input_data[e.pos:min(len(input_data), e.pos+20)]}")
+            
+            # Intento de reparación de JSON mal formado (común con agentes LLM)
+            try:
+                # Tratar de reparar JSON si parece que fue generado por un LLM
+                import ast
+                import re
+                
+                # PRIMERO: Intentar evaluar como literal Python si contiene dict() o []
+                # Esto es más seguro y directo para el formato [dict(...), dict(...)]
+                if ("dict(" in input_data and "[" in input_data and "]" in input_data) or \
+                   (input_data.strip().startswith("[") and input_data.strip().endswith("]")):
+                    logger.info("Detectado posible formato Python literal [dict(...)]. Intentando evaluar con ast.literal_eval.")
+                    try:
+                        # Usar ast.literal_eval para evaluar de forma segura el literal Python
+                        evaluated_data = ast.literal_eval(input_data)
+                        if isinstance(evaluated_data, list):
+                            # Verificar si cada elemento es un diccionario con 'command'
+                            is_valid_list = True
+                            for item in evaluated_data:
+                                if not isinstance(item, dict) or "command" not in item:
+                                    is_valid_list = False
+                                    logger.warning(f"Elemento en lista evaluada no es un dict válido con 'command': {item}")
+                                    break
+                            if is_valid_list:
+                                processed_commands = evaluated_data
+                                logger.info("Input evaluado exitosamente como lista Python literal.")
+                            else:
+                                logger.warning("Lista evaluada no contiene diccionarios de comando válidos.")
+                        else:
+                            logger.warning(f"Literal Python evaluado no es una lista (tipo: {type(evaluated_data)}).")
+                    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError) as eval_error:
+                        logger.warning(f"ast.literal_eval falló: {eval_error}")
+                    except Exception as eval_ex: # Captura otras posibles excepciones de ast
+                         logger.error(f"Error inesperado durante ast.literal_eval: {eval_ex}")
 
-    elif isinstance(commands_list, dict):
+                # SEGUNDO: Si literal_eval falló o no aplicó, intentar reparar formato dict() a JSON
+                if processed_commands is None and "dict(" in input_data:
+                    logger.info("Detectado posible formato Python dict() en lugar de JSON (literal_eval falló o no aplicó). Intentando reparar a JSON.")
+                    # Reemplazar dict(...) con {"...": ...}
+                    repaired = input_data.replace("dict(", "{").replace(")", "}")
+                    # Reemplazar comillas finales que no son válidas en JSON
+                    repaired = re.sub(r',\\s*}', '}', repaired)
+                    # Convertir comillas simples a dobles (manejar casos con comillas escapadas si es necesario)
+                    # Esta conversión simple puede ser problemática si hay comillas dentro de strings
+                    repaired = repaired.replace("\\'", "'") # Desescapar primero si es necesario
+                    repaired = repaired.replace("'", '"') 
+                    
+                    logger.info(f"JSON reparado (intento 1): {repaired}")
+                    try:
+                        parsed_data = json.loads(repaired)
+                        
+                        if isinstance(parsed_data, list):
+                            processed_commands = parsed_data
+                            logger.info("JSON reparado parseado exitosamente a lista.")
+                        elif isinstance(parsed_data, dict):
+                            # Buscar una lista dentro del dict
+                            for key in ["commands_list", "commands", "command_list"]:
+                                if key in parsed_data and isinstance(parsed_data[key], list):
+                                    processed_commands = parsed_data[key]
+                                    logger.info(f"Lista encontrada en clave '{key}' del JSON reparado")
+                                    break
+                        # Añadir manejo para el caso [{"commands_list": [...]}] después de reparar
+                        elif isinstance(parsed_data, list) and len(parsed_data) > 0 and isinstance(parsed_data[0], dict):
+                             for key in ["commands_list", "commands", "command_list", "input", "data"]:
+                                if key in parsed_data[0] and isinstance(parsed_data[0][key], list):
+                                    processed_commands = parsed_data[0][key]
+                                    logger.info(f"Extraída lista de comandos anidada desde JSON reparado parsed_data[0]['{key}']")
+                                    break
+                                    
+                    except json.JSONDecodeError as repair_json_error:
+                         logger.error(f"Falló el parseo del JSON reparado: {repair_json_error}")
+                    except Exception as repair_ex:
+                         logger.error(f"Error inesperado durante el procesamiento del JSON reparado: {repair_ex}")
+
+                # TERCERO: Si todo lo demás falla, intentar literal_eval como último recurso general
+                if processed_commands is None:
+                    logger.info("Intentando parsear como literal Python genérico (último recurso)")
+                    try:
+                        result = ast.literal_eval(input_data)
+                        if isinstance(result, list):
+                            processed_commands = result
+                            logger.info("Input parseado como literal Python a lista (último recurso).")
+                        else:
+                            logger.error(f"Literal Python no es una lista: {type(result)}")
+                    except Exception as final_eval_error:
+                         logger.error(f"Falló el último intento con ast.literal_eval: {final_eval_error}")
+
+            except Exception as repair_error:
+                logger.error(f"Error general durante el intento de reparación/evaluación: {repair_error}")
+            
+            # Si todavía no tenemos comandos, devolver error
+            if processed_commands is None:
+                # Mejorar mensaje de error para indicar que se intentó reparar/evaluar
+                return json.dumps({"status": "error", "message": f"Could not parse command list from input string, even after attempting repair/evaluation: {str(e)}"})
+        except Exception as e:
+            error_msg = f"Error inesperado procesando input string: {e}. Input: {input_data}"
+            logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return json.dumps({"status": "error", "error": "Unexpected error processing string input", "details": str(e)})
+
+    elif isinstance(input_data, dict):
         logger.info("Input es un diccionario. Intentando extraer lista de comandos.")
-        # Check common CrewAI patterns or direct list key
-        if "commands_list" in commands_list and isinstance(commands_list["commands_list"], list):
-            processed_commands = commands_list["commands_list"]
-            logger.info("Extraída lista desde la clave 'commands_list'.")
-        elif "commands" in commands_list and isinstance(commands_list["commands"], list):
-             processed_commands = commands_list["commands"]
-             logger.info("Extraída lista desde la clave 'commands'.")
-        # Check if the dict itself is a single command structure
-        elif "command" in commands_list:
-             logger.info("Input parece ser un único comando en formato diccionario. Envolviendo en lista.")
-             processed_commands = [commands_list]
-        else:
-            logger.warning("Diccionario de input no contiene una lista de comandos reconocible (claves 'commands_list', 'commands') ni es un comando único.")
-            # Fall through to final type check
+        found_list = None
+        # Check common keys CrewAI might use or that make sense
+        possible_keys = ["commands_list", "commands", "command_list", "batch", "input", "data"]
+        for key in possible_keys:
+            if key in input_data and isinstance(input_data[key], list):
+                found_list = input_data[key]
+                logger.info(f"Extraída lista desde la clave '{key}'.")
+                break
+            # Check if the value associated with the key is a JSON string list
+            elif key in input_data and isinstance(input_data[key], str):
+                 logger.info(f"Valor para la clave '{key}' es un string. Intentando parsear como JSON.")
+                 try:
+                     parsed_value = json.loads(input_data[key])
+                     if isinstance(parsed_value, list):
+                         found_list = parsed_value
+                         logger.info(f"String JSON para la clave '{key}' parseado exitosamente a lista.")
+                         break
+                     else:
+                         logger.warning(f"String JSON para la clave '{key}' no representa una lista.")
+                 except json.JSONDecodeError:
+                     logger.warning(f"String para la clave '{key}' no es JSON válido.")
 
-    elif isinstance(commands_list, list):
-        logger.info("Input ya es una lista.")
-        processed_commands = commands_list # Already in the correct format
+        if found_list is not None:
+            processed_commands = found_list
+        # If no list found under common keys, check if the dict itself is a single command
+        elif "command" in input_data and "params" in input_data:
+             logger.info("Input parece ser un único comando en formato diccionario. Envolviendo en lista.")
+             processed_commands = [input_data]
+        # Check if the dictionary has exactly one value and that value is a list
+        elif len(input_data) == 1:
+             single_value = next(iter(input_data.values()))
+             if isinstance(single_value, list):
+                 logger.info("Input es un diccionario con un solo valor que es una lista. Usando esa lista.")
+                 processed_commands = single_value
+             elif isinstance(single_value, str):
+                 logger.info("Input es un diccionario con un solo valor que es un string. Intentando parsear como JSON list.")
+                 try:
+                     parsed_value = json.loads(single_value)
+                     if isinstance(parsed_value, list):
+                         processed_commands = parsed_value
+                         logger.info("String JSON de valor único parseado exitosamente a lista.")
+                     else:
+                         logger.warning("String JSON de valor único no representa una lista.")
+                 except json.JSONDecodeError:
+                     logger.warning("String de valor único no es JSON válido.")
+
+        if processed_commands is None:
+             logger.error("Diccionario de input no contiene una lista de comandos reconocible o interpretable.")
+             return "Error: Could not extract a valid command list from the dictionary input."
+
 
     # --- Final Validation ---
     if not isinstance(processed_commands, list):
-        error_msg = f"Después del procesamiento, no se pudo obtener una lista de comandos válida. Tipo final: {type(processed_commands)}. Input original: {str(commands_list)[:500]}"
+        # This case should ideally be unreachable now due to prior checks and returns
+        error_msg = f"Después de un procesamiento robusto, no se pudo obtener una lista de comandos válida. Tipo final: {type(processed_commands)}. Input original: {str(input_data)[:500]}"
         logger.error(error_msg)
-        return json.dumps({"status": "error", "error": error_msg, "details": "Input could not be resolved to a list of commands."})
+        # Return error consistent with CrewAI's expectation
+        return "Error: the Action Input is not a valid key, value dictionary."
 
     # Check if list is empty *after* successful parsing
     if not processed_commands: # Handles empty list case
@@ -213,20 +446,18 @@ def execute_mcp_command_batch(commands_list: list = None) -> str: # MCP Guidelin
     logger.info(f"Iniciando ejecución de {len(processed_commands)} comandos.")
     for i, cmd_item in enumerate(processed_commands):
         command = None
-        params = {}
-
-        # Validate individual command item structure
+        params = {}        # Validate individual command item structure
         if isinstance(cmd_item, dict):
             command = cmd_item.get("command")
             params = cmd_item.get("params", {})
             if not isinstance(command, str) or not command:
-                 error_msg = f"Elemento {i} de la lista es un diccionario pero no tiene una clave 'command' válida o está vacía: {cmd_item}"
-                 logger.error(error_msg)
-                 results.append({"status": "error", "index": i, "error": error_msg})
-                 continue
+                error_msg = f"Elemento {i} de la lista es un diccionario pero no tiene una clave 'command' válida o está vacía: {cmd_item}"
+                logger.error(error_msg)
+                results.append(dict(status="error", index=i, error=error_msg))
+                continue
             if not isinstance(params, dict):
-                 logger.warning(f"Elemento {i} tiene 'params' que no es un diccionario (tipo: {type(params)}). Usando diccionario vacío. Item: {cmd_item}")
-                 params = {} # Default to empty dict if params is invalid type
+                logger.warning(f"Elemento {i} tiene 'params' que no es un diccionario (tipo: {type(params)}). Usando diccionario vacío. Item: {cmd_item}")
+                params = {} # Default to empty dict if params is invalid type
 
         # Allow simple command names as strings (less common for batch but possible)
         elif isinstance(cmd_item, str) and cmd_item:
@@ -236,39 +467,41 @@ def execute_mcp_command_batch(commands_list: list = None) -> str: # MCP Guidelin
         else:
             error_msg = f"Elemento {i} de la lista tiene formato no reconocido o inválido: tipo={type(cmd_item)}, valor={str(cmd_item)[:100]}"
             logger.error(error_msg)
-            results.append({"status": "error", "index": i, "error": error_msg})
+            results.append(dict(status="error", index=i, error=error_msg))
             continue
 
         # Execute individual command using the single execution tool
         logger.info(f"Ejecutando comando {i+1}/{len(processed_commands)}: '{command}' con params: {params}")
         try:
-            # Ensure params passed to execute_mcp_command is a dict or JSON string
-            # execute_mcp_command already handles dict or string, so passing params dict is fine
+            # execute_mcp_command already handles dict or string params, so passing params dict is fine
             response_json = execute_mcp_command(command=command, params_json=params)
             # Parse the JSON response string from execute_mcp_command
             try:
                 response = json.loads(response_json)
                 results.append(response)
-                # Log success only if status indicates success (or is missing)
+                # Log success/error based on status
                 if isinstance(response, dict) and response.get("status", "success") == "error":
-                     logger.warning(f"Comando '{command}' ejecutado, pero devolvió error: {response.get('error', 'Unknown error')}")
+                    logger.warning(f"Comando '{command}' ejecutado, pero devolvió error: {response.get('error', 'Unknown error')}")
                 else:
-                     logger.info(f"Comando '{command}' ejecutado con éxito (respuesta parcial): {str(response_json)[:200]}...")
+                    logger.info(f"Comando '{command}' ejecutado con éxito (respuesta parcial): {str(response_json)[:200]}...")
             except json.JSONDecodeError as json_e:
-                 error_msg = f"Error al parsear la respuesta JSON del comando '{command}': {json_e}. Respuesta recibida: {response_json}"
-                 logger.error(error_msg)
-                 results.append({"status": "error", "command": command, "error": error_msg, "raw_response": response_json})
+                error_msg = f"Error al parsear la respuesta JSON del comando '{command}': {json_e}. Respuesta recibida: {response_json}"
+                logger.error(error_msg)
+                results.append(dict(status="error", command=command, error=error_msg, raw_response=response_json))
 
         except Exception as e:
             import traceback
             tb_str = traceback.format_exc()
             error_msg = f"Error inesperado ejecutando el comando individual '{command}' dentro del batch: {e}"
             logger.error(f"{error_msg}\nTraceback:\n{tb_str}")
-            results.append({"status": "error", "command": command, "error": error_msg, "details": tb_str})
+            results.append(dict(status="error", command=command, error=error_msg, details=tb_str))
 
     # Return all results
     logger.info(f"execute_mcp_command_batch completado: {len(results)} resultados generados.")
-    return json.dumps(results)
+    final_result = json.dumps(results)
+    logger.info(f"--- TOOL RETURN: execute_mcp_command_batch ---")
+    logger.info(f"Returning: {final_result[:500]}...") # Log limited result
+    return final_result
 
 @tool
 def get_available_commands() -> str:
@@ -284,30 +517,34 @@ def get_available_commands() -> str:
       # Por ejemplo, si encuentras "get_actors_in_level" en la lista:
       # execute_mcp_command("get_actors_in_level")
     """
+    logger.info(f"--- TOOL CALL: get_available_commands ---")
     commands = {
         "Editor Tools": {
-            "get_actors_in_level": "Lista todos los actores en el nivel actual",
-            "find_actors_by_name": "Busca actores por patrón de nombre",
-            "spawn_actor": "Crea un nuevo actor (parámetros: name, type, location, rotation, scale)",
-            "delete_actor": "Elimina un actor existente (parámetros: name)",
-            "focus_viewport": "Enfoca la vista en un objetivo",
-            "take_screenshot": "Captura una imagen de la pantalla"
+            "get_actors_in_level": "Lista todos los actores en el nivel actual. No requiere parámetros.",
+            "find_actors_by_name": "Busca actores por patrón de nombre. Parámetros: 'pattern' (string con patrón de búsqueda, ej: 'Player*').",
+            "spawn_actor": "Crea un nuevo actor en el nivel. Parámetros OBLIGATORIOS: 'name' (string con nombre único), 'type' (string con tipo de actor: 'CUBE', 'SPHERE', 'CYLINDER', etc). Parámetros OPCIONALES: 'location' (array [x,y,z] en cm), 'rotation' (array [pitch,yaw,roll] en grados), 'scale' (array [x,y,z] o número).",
+            "delete_actor": "Elimina un actor existente por su nombre. Parámetros OBLIGATORIOS: 'name' (string con nombre exacto del actor).",
+            "focus_viewport": "Enfoca la vista en un objetivo. Parámetros: 'target' (string con nombre del actor) o 'location' (array [x,y,z]). Si no se especifica, enfoca en el origen.",
+            "take_screenshot": "Captura una imagen de la pantalla. Parámetros OPCIONALES: 'filename' (string con nombre de archivo), 'width', 'height' (números)."
         },
         "Blueprint Tools": {
-            "create_blueprint": "Crea una nueva clase Blueprint (parámetros: name, parent_class)",
-            "add_component_to_blueprint": "Añade un componente a un Blueprint (parámetros: blueprint_name, component_type, component_name)",
-            "compile_blueprint": "Compila los cambios en un Blueprint (parámetros: blueprint_name)",
-            "set_blueprint_property": "Establece una propiedad en un Blueprint"
+            "create_blueprint": "Crea una nueva clase Blueprint. Parámetros OBLIGATORIOS: 'name' (string, nombre sin BP_ ni espacios), 'parent_class' (string, clase base como 'Actor', 'Pawn', 'Character', etc).",
+            "add_component_to_blueprint": "Añade un componente a un Blueprint. Parámetros OBLIGATORIOS: 'blueprint_name' (string, nombre del blueprint), 'component_type' (string, tipo del componente como 'StaticMeshComponent'), 'component_name' (string, nombre para el componente).",
+            "compile_blueprint": "Compila los cambios en un Blueprint. Parámetros OBLIGATORIOS: 'blueprint_name' (string, nombre del blueprint a compilar).",
+            "set_blueprint_property": "Establece una propiedad en un Blueprint. Parámetros OBLIGATORIOS: 'blueprint_name' (string), 'property_name' (string), 'property_value' (valor apropiado para el tipo)."
         },
         "UMG Tools": {
-            "create_umg_widget_blueprint": "Crea un nuevo Widget Blueprint para UI",
-            "add_text_block_to_widget": "Añade un bloque de texto a un widget",
-            "add_button_to_widget": "Añade un botón a un widget",
-            "bind_widget_event": "Vincula eventos de widgets a funciones"
+            "create_umg_widget_blueprint": "Crea un nuevo Widget Blueprint para UI. Parámetros OBLIGATORIOS: 'name' (string, nombre sin WB_ ni espacios).",
+            "add_text_block_to_widget": "Añade un bloque de texto a un widget. Parámetros OBLIGATORIOS: 'widget_name' (string), 'text_block_name' (string), 'text' (string, texto a mostrar).",
+            "add_button_to_widget": "Añade un botón a un widget. Parámetros OBLIGATORIOS: 'widget_name' (string), 'button_name' (string). OPCIONALES: 'text' (string, texto del botón).",
+            "bind_widget_event": "Vincula eventos de widgets a funciones. Parámetros OBLIGATORIOS: 'widget_name' (string), 'widget_element' (string, nombre del elemento), 'event_name' (string, nombre del evento como 'OnClicked'), 'function_name' (string, función a vincular)."
         }
     }
     
-    return json.dumps(commands)
+    final_result = json.dumps(commands)
+    logger.info(f"--- TOOL RETURN: get_available_commands ---")
+    logger.info(f"Returning: {final_result[:500]}...") # Log limited result
+    return final_result
 
 # --- 3. Definir los Agentes ---
 
@@ -317,11 +554,58 @@ command_planner = Agent(
     goal="Dividir instrucciones de alto nivel en comandos específicos para Unreal Engine",
     backstory="""Eres un experto en Unreal Engine que sabe cómo traducir instrucciones 
     en lenguaje natural a comandos específicos de MCP. Entiendes la API de MCP y puedes 
-    planificar una secuencia de comandos para lograr los objetivos del usuario.""",
+    planificar una secuencia de comandos para lograr los objetivos del usuario.
+    
+    **PROCESO OBLIGATORIO:**
+    1. Llama a la herramienta 'get_available_commands' UNA SOLA VEZ para obtener la lista de comandos.
+    2. USA INMEDIATAMENTE la lista obtenida para planificar la secuencia de comandos MCP necesarios.
+    3. NO vuelvas a llamar a 'get_available_commands' después de haber obtenido la lista.
+    4. Asegúrate de que TODOS los parámetros requeridos para cada comando estén presentes.
+    5. Usa el formato dict() para los parámetros.
+    
+    GUÍA DE COMANDOS MCP PRINCIPALES:
+    
+    1. CREAR BLUEPRINTS:
+       - Comando: 'create_blueprint'
+       - Parámetros OBLIGATORIOS: 
+         * 'name': String con el nombre del blueprint (sin espacios ni prefijos BP_)
+         * 'parent_class': String con la clase base (como 'Actor', 'Pawn', 'Character')
+       - Ejemplo: create_blueprint con params=dict(name="MyActor", parent_class="Actor")
+    
+    2. AÑADIR COMPONENTES A BLUEPRINTS:
+       - Comando: 'add_component_to_blueprint'
+       - Parámetros OBLIGATORIOS:
+         * 'blueprint_name': Nombre exacto del blueprint al que añadir
+         * 'component_type': Tipo de componente (ej: 'StaticMeshComponent')
+         * 'component_name': Nombre para el nuevo componente
+       - Ejemplo: add_component_to_blueprint con params=dict(blueprint_name="MyActor", component_type="StaticMeshComponent", component_name="Mesh")
+    
+    3. SPAWNER ACTORES:
+       - Comando: 'spawn_actor'
+       - Parámetros OBLIGATORIOS:
+         * 'name': String con nombre único para el actor
+         * 'type': Tipo de actor ('CUBE', 'SPHERE', etc.)
+       - Parámetros OPCIONALES:
+         * 'location': Array [x,y,z] en cm (usa [0,0,0] para el centro)
+         * 'rotation': Array [pitch,yaw,roll] en grados
+         * 'scale': Array [x,y,z] o número único
+       - Ejemplo: spawn_actor con params=dict(name="MiCubo", type="CUBE", location=[0,0,100])
+    
+    4. LISTAR ACTORES EN NIVEL:
+       - Comando: 'get_actors_in_level'
+       - Sin parámetros
+       - Ejemplo: get_actors_in_level con params=dict()
+    
+    IMPORTANTE: 
+    - Asegúrate de que TODOS los parámetros requeridos estén presentes en tus comandos.
+    - Siempre usa el formato correcto: dict(param1="valor1", param2=[0,0,0])
+    - Para ubicar elementos en el centro de la escena, usa location=[0,0,0]
+    - Al crear blueprints, siempre proporciona 'name' y 'parent_class'.
+    """,
     llm=ollama_llm,
     tools=[get_available_commands],
     verbose=True,
-    max_iter=3,  # Limita el número de iteraciones
+    max_iter=5,  # Aumentar el número de iteraciones para mejor planificación
     max_rpm=10   # Limita las solicitudes por minuto
 )
 
@@ -350,60 +634,67 @@ command_executor = Agent(
 plan_commands_task = Task(
     description="""Basado en la instrucción del usuario: '{user_prompt}', 
     planifica una secuencia de comandos MCP para Unreal Engine.
-    Para cada comando, especifica:
-    1. Nombre del comando a ejecutar
-    2. Parámetros necesarios con valores específicos
-    3. Qué esperas que logre este comando
     
-    Para obtener la lista de comandos disponibles, DEBES usar la herramienta 
-    'get_available_commands' sin ningún parámetro.
+    PASOS OBLIGATORIOS:
+    1. Llama a la herramienta 'get_available_commands' UNA SOLA VEZ para ver los comandos disponibles.
+    2. ANALIZA la lista de comandos obtenida.
+    3. USA esa lista para crear tu plan final con la secuencia de comandos MCP.
+    4. NO llames a 'get_available_commands' más de una vez.
+    
+    Para cada comando en tu plan, especifica:
+    1. Nombre del comando a ejecutar (debe existir en la lista obtenida).
+    2. Parámetros necesarios con valores específicos (verifica los requeridos).
+    3. Qué esperas que logre este comando.
     
     No olvides que los comandos deben ejecutarse en un orden lógico.""",    
-    expected_output="""Un plan detallado con una secuencia JSON de comandos MCP a ejecutar.
+    expected_output="""Un plan detallado con una secuencia de comandos MCP a ejecutar, usando notación dict().
     Por ejemplo:
     [
-      {
-        "command": "get_actors_in_level",
-        "params": {},
-        "description": "Obtener lista de actores en el nivel actual"
-      }
+      dict(
+        command="get_actors_in_level",
+        params=dict(),
+        description="Obtener lista de actores en el nivel actual"
+      )
     ]""",
     agent=command_planner
 )
 
 # Tarea para ejecutar los comandos
 execute_commands_task = Task(
-    description="""⚠️⚠️⚠️ ATENCIÓN: DEBES EJECUTAR LOS COMANDOS ABAJO INDICADOS ⚠️⚠️⚠️
+    description="""⚠️⚠️⚠️ ATENCIÓN: DEBES EJECUTAR LOS COMANDOS MCP PROPORCIONADOS ⚠️⚠️⚠️
 
-    TU ÚNICO TRABAJO ES LLAMAR A LA FUNCIÓN execute_mcp_command PARA CADA COMANDO.
-    
-    PASO A PASO OBLIGATORIO:
-    1. El Command Planner ha generado la lista de comandos a ejecutar.
-    2. Para cada comando en la lista:
-        - EJECUTA execute_mcp_command(nombre_del_comando, parámetros)
-        - El primer argumento es el nombre exacto del comando (ej: "get_actors_in_level") 
-        - El segundo argumento deben ser los parámetros (un diccionario)
-        - GUARDA la respuesta exacta devuelta por la función
-    3. Si hay varios comandos, TIENES PERMITIDO usar execute_mcp_command_batch(lista_de_comandos)
-    
-    IMPORTANTE: Tu trabajo será verificado automáticamente. Si no ejecutas los comandos usando las funciones
-    de herramientas, serás marcado como fallido inmediatamente.
-    
-    EJEMPLOS DE CÓMO DEBES PROCEDER:
-    - Para un solo comando: resultado = execute_mcp_command("get_actors_in_level", dict())
-    - Para múltiples: resultado = execute_mcp_command_batch([dict(command="cmd1", params=dict()), dict(command="cmd2", params=dict())])
-    
-    ⚠️ NO RESPONDAS SIN ANTES EJECUTAR LOS COMANDOS ⚠️
+    TU ÚNICO TRABAJO ES LLAMAR A LAS HERRAMIENTAS 'execute_mcp_command' o 'execute_mcp_command_batch'.
+    NO GENERES TEXTO EXPLICATIVO, SOLO LLAMA A LA HERRAMIENTA ADECUADA.
+
+    Contexto: El 'Command Planner' ha generado una lista de comandos (disponible en el contexto de esta tarea).
+
+    PASOS OBLIGATORIOS:
+    1. Revisa la lista de comandos proporcionada por el 'Command Planner' en el contexto.
+    2. Si hay UN SOLO comando en la lista:
+        - Llama a la herramienta 'execute_mcp_command'.
+        - El primer argumento 'command' DEBE ser el nombre del comando (string).
+        - El segundo argumento 'params_json' DEBE ser el diccionario de parámetros directamente (NO un string JSON).
+        - Ejemplo de llamada: 'execute_mcp_command'(command="get_actors_in_level", params_json=dict())
+    3. Si hay MÚLTIPLES comandos en la lista:
+        - Llama a la herramienta 'execute_mcp_command_batch'.
+        - El argumento 'input_data' DEBE ser la LISTA Python COMPLETA de diccionarios de comandos, tal como la proporcionó el planificador.
+        - **CRÍTICO**: NO pases un string JSON a 'input_data'. Pasa la lista Python directamente.
+        - Ejemplo de llamada CORRECTA: 'execute_mcp_command_batch'(input_data=[dict(command="cmd1", params=dict()), dict(command="cmd2", params=dict(key="value"))])
+        - Ejemplo de llamada INCORRECTA: 'execute_mcp_command_batch'(input_data='[dict(command="cmd1", params=dict())]') <-- ¡NO HACER ESTO!
+
+    IMPORTANTE: Tu trabajo será verificado. Si no llamas a las herramientas 'execute_mcp_command' o 'execute_mcp_command_batch' con los argumentos en el formato correcto (diccionarios y listas Python, NO strings JSON), la tarea fallará.
+
+    ⚠️ NO RESPONDAS NADA MÁS QUE LA LLAMADA A LA HERRAMIENTA. ⚠️
     """,
-    expected_output="""Un reporte detallado de la ejecución de cada comando, que DEBE incluir:
-    - El comando ejecutado y sus parámetros
-    - La respuesta JSON EXACTA recibida del servidor
-    - Una evaluación del éxito o fracaso basado en la respuesta
+    expected_output="""La salida JSON EXACTA devuelta por la herramienta 'execute_mcp_command' o 'execute_mcp_command_batch'.
+    No añadas ningún texto adicional, formato o explicación. Solo el JSON puro de la respuesta de la herramienta.
 
-    Ejemplo:
-    Comando: get_actors_in_level
-    Respuesta: {"status": "success", "actors": [{"name": "Floor", "class": "StaticMeshActor"}, ...]}
-    Evaluación: Éxito. Se encontraron X actores en la escena.""",
+    Ejemplo si se usó 'execute_mcp_command':
+    dict(status="success", actors=[dict(name="Floor", class="StaticMeshActor")])
+
+    Ejemplo si se usó 'execute_mcp_command_batch':
+    [dict(status="success", command="cmd1", result=dict()), dict(status="error", command="cmd2", error="Detalles del error")]
+    """,
     agent=command_executor,
     context=[plan_commands_task]  # Depende de la salida de la tarea de planificación
 )

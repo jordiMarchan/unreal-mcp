@@ -161,3 +161,105 @@ LiteLLM completion() model= cogito:3b; provider = ollama
 2025-04-15 10:52:35,913 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
 2025-04-15 10:52:35,968 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
 2025-04-15 10:52:36,013 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 15:59:02,955 - UnrealMCP - INFO - Editor tools registered successfully
+2025-04-15 15:59:02,962 - UnrealMCP - INFO - Blueprint tools registered successfully
+2025-04-15 15:59:02,971 - UnrealMCP - INFO - Blueprint node tools registered successfully
+2025-04-15 15:59:02,972 - UnrealMCP - INFO - Project tools registered successfully
+2025-04-15 15:59:02,983 - UnrealMCP - INFO - UMG tools registered successfully
+2025-04-15 16:00:16,784 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:00:28,656 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:00:28,658 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:00:30,767 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:30,767 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:30,773 - UnrealCrew - INFO - --- TOOL CALL: get_available_commands ---
+2025-04-15 16:00:30,773 - UnrealCrew - INFO - --- TOOL RETURN: get_available_commands ---
+2025-04-15 16:00:30,774 - UnrealCrew - INFO - Returning: {"Editor Tools": {"get_actors_in_level": "Lista todos los actores en el nivel actual. No requiere par\u00e1metros.", "find_actors_by_name": "Busca actores por patr\u00f3n de nombre. Par\u00e1metros: 'pattern' (string con patr\u00f3n de b\u00fasqueda, ej: 'Player*').", "spawn_actor": "Crea un nuevo actor en el nivel. Par\u00e1metros OBLIGATORIOS: 'name' (string con nombre \u00fanico), 'type' (string con tipo de actor: 'CUBE', 'SPHERE', 'CYLINDER', etc). Par\u00e1metros OPCIONALES: 'location' (arr...
+2025-04-15 16:00:30,781 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:00:30,818 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:30,868 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:41,018 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:00:41,021 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:00:41,032 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:00:43,114 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:43,160 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:50,339 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:00:50,341 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:00:50,352 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:00:52,440 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:00:52,492 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:00,725 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:01:00,728 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:01:00,737 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:01:02,839 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:02,887 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:16,960 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:01:16,963 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:01:16,973 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:01:19,134 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:19,180 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:32,767 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:01:32,771 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:01:32,792 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:01:34,877 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:34,924 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:42,422 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:01:42,425 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:01:42,434 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:01:44,511 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:44,564 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:54,726 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:01:54,729 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:01:54,735 - UnrealCrew - INFO - --- TOOL CALL: execute_mcp_command ---
+2025-04-15 16:01:54,735 - UnrealCrew - INFO - Input command: get_available_commands
+2025-04-15 16:01:54,736 - UnrealCrew - INFO - Input params_json (type: <class 'NoneType'>): None...
+2025-04-15 16:01:54,736 - UnrealMCP - INFO - Connecting to Unreal at 127.0.0.1:55557...
+2025-04-15 16:01:54,737 - UnrealMCP - INFO - Connected to Unreal Engine
+2025-04-15 16:01:54,737 - UnrealCrew - INFO - Ejecutando comando MCP: get_available_commands con parámetros: {}
+2025-04-15 16:01:54,737 - UnrealMCP - INFO - Connecting to Unreal at 127.0.0.1:55557...
+2025-04-15 16:01:54,738 - UnrealMCP - INFO - Connected to Unreal Engine
+2025-04-15 16:01:54,738 - UnrealMCP - INFO - Sending command: {"type": "get_available_commands", "params": {}}
+2025-04-15 16:01:54,963 - UnrealMCP - INFO - Received complete response (78 bytes)
+2025-04-15 16:01:54,963 - UnrealMCP - INFO - Complete response from Unreal: {'status': 'error', 'error': 'Unknown command: get_available_commands'}
+2025-04-15 16:01:54,964 - UnrealMCP - ERROR - Unreal error (status=error): Unknown command: get_available_commands
+2025-04-15 16:01:54,965 - UnrealCrew - INFO - Respuesta recibida para get_available_commands: {"status": "error", "error": "Unknown command: get_available_commands"}...
+2025-04-15 16:01:54,966 - UnrealCrew - INFO - --- TOOL RETURN: execute_mcp_command ---
+2025-04-15 16:01:54,966 - UnrealCrew - INFO - Returning: {"status": "error", "error": "Unknown command: get_available_commands"}...
+2025-04-15 16:01:54,981 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:01:56,835 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:01:56,882 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:13,416 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:02:13,420 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:02:13,431 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:02:15,503 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:15,556 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:24,431 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:02:24,433 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:02:24,445 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:02:26,539 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:26,586 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:43,326 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:02:43,330 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:02:43,337 - UnrealCrew - INFO - --- TOOL CALL: execute_mcp_command_batch ---
+2025-04-15 16:02:43,337 - UnrealCrew - INFO - Input input_data (type: <class 'NoneType'>): None...
+2025-04-15 16:02:43,337 - UnrealCrew - WARNING - Input 'input_data' es None. Mostrando stack trace para debug:
+2025-04-15 16:02:43,341 - UnrealCrew - WARNING - ['  File "d:\\UE\\UE\\Python\\unreal_crew.py", line 805, in <module>\n    resultado = process_unreal_prompt(prompt)\n', '  File "d:\\UE\\UE\\Python\\unreal_crew.py", line 774, in process_unreal_prompt\n    result = unreal_crew.kickoff(inputs={\'user_prompt\': user_prompt})\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\crew.py", line 640, in kickoff\n    result = self._run_sequential_process()\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\crew.py", line 752, in _run_sequential_process\n    return self._execute_tasks(self.tasks)\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\crew.py", line 850, in _execute_tasks\n    task_output = task.execute_sync(\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\task.py", line 310, in execute_sync\n    return self._execute_core(agent, context, tools)\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\task.py", line 374, in _execute_core\n    result = agent.execute_task(\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\agent.py", line 247, in execute_task\n    result = self.agent_executor.invoke(\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py", line 108, in invoke\n    formatted_answer = self._invoke_loop()\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py", line 150, in _invoke_loop\n    tool_result = self._execute_tool_and_check_finality(\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\agents\\crew_agent_executor.py", line 392, in _execute_tool_and_check_finality\n    tool_result = tool_usage.use(tool_calling, agent_action.text)\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\tools\\tool_usage.py", line 132, in use\n    return f"{self._use(tool_string=tool_string, tool=tool, calling=calling)}"\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\tools\\tool_usage.py", line 190, in _use\n    result = tool.invoke(input=arguments)\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\tools\\structured_tool.py", line 236, in invoke\n    return self.func(**parsed_args, **kwargs)\n', '  File "D:\\UE\\UE\\.venv\\Lib\\site-packages\\crewai\\tools\\base_tool.py", line 187, in _run\n    return self.func(*args, **kwargs)\n', '  File "d:\\UE\\UE\\Python\\unreal_crew.py", line 189, in execute_mcp_command_batch\n    logger.warning(traceback.format_stack())\n']
+2025-04-15 16:02:43,341 - UnrealCrew - WARNING - No se pudo recuperar input. Devolviendo lista de resultados vacía.
+2025-04-15 16:02:43,349 - LiteLLM - INFO - 
+LiteLLM completion() model= cogito:3b; provider = ollama
+2025-04-15 16:02:45,600 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:45,651 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:52,226 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-04-15 16:02:52,230 - LiteLLM - INFO - Wrapper: Completed Call, calling success_handler
+2025-04-15 16:02:54,323 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
+2025-04-15 16:02:54,372 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/show "HTTP/1.1 200 OK"
